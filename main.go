@@ -7,6 +7,7 @@ import (
 	"github.com/rs/xid"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 type Model struct {
@@ -27,6 +28,13 @@ type Spot struct {
 	Name string `json:"name"`
 }
 
+func setField(field *schema.Field, rv reflect.Value) {
+	if _, isZero := field.ValueOf(rv); isZero {
+		var xid = xid.New().String()
+		field.Set(rv, xid)
+	}
+}
+
 func main() {
 	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
 	if err != nil {
@@ -37,32 +45,36 @@ func main() {
 	db.AutoMigrate(&Lot{}, &Spot{})
 
 	db.Callback().Create().Before("gorm:save_before_associations").Register("app:update_xid_when_create", func(db *gorm.DB) {
-		var field = db.Statement.Schema.LookUpField("ID")
-		if field != nil {
-			if v, isZero := field.ValueOf(db.Statement.ReflectValue); isZero {
-				if _, ok := v.(string); ok {
-					fmt.Println("****** kind", db.Statement.ReflectValue.Kind())
-					switch db.Statement.ReflectValue.Kind() {
-					case reflect.Slice, reflect.Array:
-						for i := 0; i < db.Statement.ReflectValue.Len(); i++ {
-							var xid = xid.New().String()
-							field.Set(db.Statement.ReflectValue.Index(i), xid)
-						}
-					case reflect.Struct:
-						var xid = xid.New().String()
-						field.Set(db.Statement.ReflectValue, xid)
-					}
-				}
+
+		fmt.Println(db.Statement.ReflectValue.Kind())
+		switch db.Statement.ReflectValue.Kind() {
+		case reflect.Slice, reflect.Array:
+			for i := 0; i < db.Statement.ReflectValue.Len(); i++ {
+				var rv = db.Statement.ReflectValue.Index(i)
+				var field = db.Statement.Schema.LookUpField("ID")
+				setField(field, rv)
 			}
+		case reflect.Struct:
+			var field = db.Statement.Schema.LookUpField("ID")
+			setField(field, db.Statement.ReflectValue)
 		}
 
 	})
 
+	var id1 = xid.New().String()
+	var id2 = xid.New().String()
+	fmt.Println(id1, id2)
 	var lots = []*Lot{
 		{
+			Model: Model{
+				ID: id1,
+			},
 			Name: "Lot 1",
 			Spots: []*Spot{
 				{
+					Model: Model{
+						ID: id2,
+					},
 					Name: "Spot 11",
 				},
 				{
@@ -83,7 +95,5 @@ func main() {
 		},
 	}
 
-	for _, lot := range lots {
-		db.Create(&lot)
-	}
+	db.Save(&lots)
 }

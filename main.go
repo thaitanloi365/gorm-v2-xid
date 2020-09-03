@@ -42,11 +42,14 @@ func main() {
 			if v, isZero := field.ValueOf(db.Statement.ReflectValue); isZero {
 				if _, ok := v.(string); ok {
 					fmt.Println("****** kind", db.Statement.ReflectValue.Kind())
-					var xid = xid.New().String()
 					switch db.Statement.ReflectValue.Kind() {
 					case reflect.Slice, reflect.Array:
-						field.Set(db.Statement.ReflectValue.Index(db.Statement.CurDestIndex), xid)
+						for i := 0; i < db.Statement.ReflectValue.Len(); i++ {
+							var xid = xid.New().String()
+							field.Set(db.Statement.ReflectValue.Index(i), xid)
+						}
 					case reflect.Struct:
+						var xid = xid.New().String()
 						field.Set(db.Statement.ReflectValue, xid)
 					}
 				}
